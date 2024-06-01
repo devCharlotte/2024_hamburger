@@ -1,0 +1,423 @@
+// 영수증 출력 화면에 타이머 제한 -> 아직 타이머 가시적이지 않음
+// 언어 선택 가능 -> 아직 언어 여러 버튼 아니고 하나의 버튼으로 해결하는 상태
+
+
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import javax.swing.*;
+import javax.swing.table.DefaultTableModel;
+import javax.swing.table.TableCellRenderer;
+import javax.swing.table.TableColumnModel;
+import java.util.HashMap;
+import java.util.Map;
+
+public class Toast extends JFrame {
+
+    private Map<String, Integer> productPrices;
+    private DefaultTableModel model;
+    private JLabel totalLabel;
+    private int total = 0;
+    private JTable table;
+    private CardLayout cardLayout;
+    private JPanel mainPanel;
+    private Map<String, Integer> cart;
+    private Panel CenterPanel;
+
+    private JButton orderButton;
+    private JButton languageButton; // 언어 선택 버튼 추가
+
+    public Toast() {
+        cart = new HashMap<>();
+        cardLayout = new CardLayout();
+        mainPanel = new JPanel(cardLayout);
+        productPrices = new HashMap<>();
+
+        // 첫 화면
+        JPanel startPanel = new JPanel();
+        startPanel.setLayout(new FlowLayout(FlowLayout.CENTER, 0, 400));
+        orderButton = new JButton("주문하기");
+        orderButton.setPreferredSize(new Dimension(100, 30));
+        orderButton.addActionListener(e -> cardLayout.show(mainPanel, "Menu"));
+        
+        // 언어 선택 버튼 추가
+        languageButton = new JButton("한국어");
+        languageButton.setPreferredSize(new Dimension(100, 30));
+        languageButton.addActionListener(new LanguageButtonListener());
+        
+        startPanel.add(orderButton);
+        startPanel.add(languageButton); // 언어 선택 버튼 추가
+
+        // 메뉴 화면
+        JPanel menuPanel = new JPanel(new BorderLayout());
+        JPanel menuButtonPanel = new JPanel(new FlowLayout());
+
+        // 상단 카테고리 패널
+        Panel CategoryPanel = new Panel();
+        CategoryPanel.setLayout(new FlowLayout());
+        CategoryPanel.setBackground(Color.GRAY);
+
+        String[] categories = {"햄버거 단품", "햄버거 세트", "음료", "사이드"};
+        JButton[] categoryButtons = new JButton[categories.length];
+
+        for (int i = 0; i < categories.length; i++) {
+            categoryButtons[i] = new JButton(categories[i]);
+            categoryButtons[i].addActionListener(new CategoryButtonListener());
+            CategoryPanel.add(categoryButtons[i]);
+        }
+
+        // 상단 제목 패널
+        Panel NorthPanel = new Panel();
+        NorthPanel.setLayout(new FlowLayout());
+
+        Label highbar = new Label();
+        highbar.setText("<상상 토스트 키오스크>");
+        highbar.setFont(new Font(Font.MONOSPACED, Font.CENTER_BASELINE, 25));
+        NorthPanel.add(highbar);
+
+        // 중앙 메뉴 패널
+        CenterPanel = new Panel();
+        CenterPanel.setLayout(new GridLayout(3, 3, 10, 10));
+        CenterPanel.setBackground(Color.LIGHT_GRAY);
+
+        // 하단 주문 내역 패널
+        Panel SouthPanel = new Panel();
+        SouthPanel.setLayout(new BorderLayout());
+        String[][] data = new String[0][0];
+        String[] title = {"상품명", "단가", "수량", "합계", "조절"};
+        model = new DefaultTableModel(data, title);
+        table = new JTable(model);
+        table.getColumn("조절").setCellRenderer(new ButtonRenderer());
+        table.getColumn("조절").setCellEditor(new ButtonEditor(new JCheckBox()));
+        JScrollPane scrollPane = new JScrollPane(table);
+        scrollPane.setPreferredSize(new Dimension(1150, 200));
+        SouthPanel.add(scrollPane, BorderLayout.CENTER);
+
+        // 총 합계금액 표시 라벨
+        totalLabel = new JLabel("총 금액: 0원");
+        totalLabel.setHorizontalAlignment(SwingConstants.RIGHT);
+        SouthPanel.add(totalLabel, BorderLayout.SOUTH);
+
+        // 우측 선택 버튼 패널
+        Panel SelectPanel = new Panel();
+        SelectPanel.setLayout(new GridLayout(3, 1, 50, 0));
+        JButton[] order = new JButton[3];
+
+        order[0] = new JButton("닫기");
+        order[1] = new JButton("초기화");
+        order[2] = new JButton("주문");
+        SelectPanel.add(order[0]);
+        SelectPanel.add(order[1]);
+        SelectPanel.add(order[2]);
+
+        // 닫기 버튼
+        order[0].addActionListener(e -> System.exit(0));
+
+        // 초기화 버튼
+        order[1].addActionListener(e -> {
+            model.setNumRows(0); // 주문 내역 초기화
+            total = 0;
+            updateTotal();
+        });
+
+        // 주문 버튼
+        order[2].addActionListener(e -> {
+            int answer = JOptionPane.showConfirmDialog(null, "주문하시겠습니까?", "Order", JOptionPane.YES_NO_OPTION);
+            if (answer == JOptionPane.YES_OPTION) {
+                if (total == 0) {
+                    JOptionPane.showMessageDialog(null, "선택 항목이 존재하지 않습니다.");
+                } else {
+                    StringBuilder orderSummary = new StringBuilder();
+                    for (int i = 0; i < table.getRowCount(); i++) {
+                        orderSummary.append(table.getValueAt(i, 0)).append(" ")
+                                .append(table.getValueAt(i, 1)).append("원 X ")
+                                .append(table.getValueAt(i, 2)).append("개\n");
+                    }
+                    String contents = orderSummary.toString();
+                    cardLayout.show(mainPanel, "OrderResult");  // 주문 완료 후 주문 결과 화면으로 전환
+                    total = 0;
+                    model.setNumRows(0);
+                    updateTotal();
+
+                    // 주문 결과 화면 타이머 설정
+                    showReceiptDialog();  // 주문 완료 후 바로 영수증 출력 여부 팝업 창 표시
+                }
+            } else {
+                JOptionPane.showMessageDialog(null, "메뉴 선택 단계로 돌아갑니다.\n");
+            }
+        });
+
+        menuPanel.add(CategoryPanel, BorderLayout.NORTH);
+        menuPanel.add(NorthPanel, BorderLayout.CENTER);
+        menuPanel.add(CenterPanel, BorderLayout.CENTER); // CenterPanel을 추가합니다.
+        menuPanel.add(SouthPanel, BorderLayout.SOUTH);
+        menuPanel.add(SelectPanel, BorderLayout.EAST);
+
+        // 주문 결과 화면
+        JPanel orderResultPanel = new JPanel(new BorderLayout());
+        JLabel orderResultLabel = new JLabel("주문이 완료되었습니다.\n이용해주셔서 감사합니다.", SwingConstants.CENTER);
+        orderResultLabel.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 18));
+        orderResultPanel.add(orderResultLabel, BorderLayout.CENTER);
+
+        JPanel orderResultButtonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        JButton orderResultCloseButton = new JButton("닫기");
+        orderResultCloseButton.setPreferredSize(new Dimension(100, 50));
+        orderResultCloseButton.addActionListener(e -> System.exit(0));
+        orderResultButtonPanel.add(orderResultCloseButton);
+        orderResultPanel.add(orderResultButtonPanel, BorderLayout.SOUTH);
+
+        // 메인 패널에 시작 화면과 메뉴 화면 추가
+        mainPanel.add(startPanel, "Start");
+        mainPanel.add(menuPanel, "Menu");
+        mainPanel.add(orderResultPanel, "OrderResult");
+
+     // 메인 패널을 프레임에 추가
+     this.add(mainPanel);
+     this.setSize(1200, 800);
+     this.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+     this.setVisible(true);
+     cardLayout.show(mainPanel, "Start");  // 시작 화면부터 표시
+     }
+    
+ // 언어 선택 버튼 리스너 추가
+    private class LanguageButtonListener implements ActionListener {
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            String selectedLanguage = languageButton.getText(); // 현재 선택된 언어
+            String newLanguage = "";
+            
+            // 다음 언어로 변경
+            switch(selectedLanguage) {
+                case "한국어":
+                    newLanguage = "English";
+                    break;
+                case "English":
+                    newLanguage = "中文";
+                    break;
+                case "中文":
+                    newLanguage = "한국어";
+                    break;
+            }
+            
+            // 언어 버튼 텍스트 변경
+            languageButton.setText(newLanguage);
+            
+            // 언어 선택에 따라 주문하기 버튼 텍스트 변경
+            switch(newLanguage) {
+                case "한국어":
+                    orderButton.setText("주문하기");
+                    break;
+                case "English":
+                    orderButton.setText("Order");
+                    break;
+                case "中文":
+                    orderButton.setText("订单");
+                    break;
+            }
+        }
+    }
+    
+     private void showReceiptDialog() {
+         // 영수증 출력 팝업 창 생성
+         JDialog receiptDialog = new JDialog(this, "영수증 출력", true);
+         receiptDialog.setSize(400, 200);
+         receiptDialog.setLayout(new BorderLayout());
+         JLabel receiptLabel = new JLabel("영수증을 출력하시겠습니까?", SwingConstants.CENTER);
+         receiptLabel.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 18));
+         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+         JButton yesButton = new JButton("네");
+         JButton noButton = new JButton("아니오");
+         yesButton.setPreferredSize(new Dimension(100, 50));
+         noButton.setPreferredSize(new Dimension(100, 50));
+         yesButton.addActionListener(e -> {
+             receiptDialog.dispose();
+         });
+         noButton.addActionListener(e -> {
+             receiptDialog.dispose();
+         });
+         buttonPanel.add(yesButton);
+         buttonPanel.add(noButton);
+         receiptDialog.add(receiptLabel, BorderLayout.NORTH);
+
+         // 프로그레스 바 추가
+         JProgressBar progressBar = new JProgressBar();
+         progressBar.setStringPainted(true);
+         receiptDialog.add(progressBar, BorderLayout.CENTER);
+
+         receiptDialog.add(buttonPanel, BorderLayout.SOUTH);
+         receiptDialog.setLocationRelativeTo(this);
+
+         Timer timer = new Timer(1000, new ActionListener() { // 1초마다 타이머 실행
+             int count = 7; // 초기 카운트 값 설정
+
+             @Override
+             public void actionPerformed(ActionEvent e) {
+                 progressBar.setValue((int) ((count / 7.0) * 100)); // 카운트에 따른 프로그레스 바 업데이트
+                 count--;
+                 if (count < 0) {
+                     ((Timer) e.getSource()).stop(); // 타이머 중지
+                     receiptDialog.dispose(); // 다이얼로그 닫기
+                 }
+             }
+         });
+         timer.start();
+
+         receiptDialog.setVisible(true);
+     }
+
+     private class CategoryButtonListener implements ActionListener {
+         @Override
+         public void actionPerformed(ActionEvent e) {
+             JButton clickedButton = (JButton) e.getSource();
+             String category = clickedButton.getText();
+             productPrices.clear();
+
+             if (category.equals("햄버거 단품")) {
+                 productPrices.put("불고기버거", 5000);
+                 productPrices.put("쉬림프버거", 5500);
+                 productPrices.put("치즈버거", 4000);
+                 productPrices.put("어니언버거", 4500);
+                 productPrices.put("한우불고기버거", 7000);
+                 productPrices.put("치킨버거", 5000);
+                 productPrices.put("핫크리스피버거", 5500);
+                 productPrices.put("베이컨버거", 6000);
+                 productPrices.put("모짜렐라베이컨버거", 6500);
+             } else if (category.equals("햄버거 세트")) {
+                 productPrices.put("불고기버거 세트", 7000);
+                 productPrices.put("쉬림프버거 세트", 7500);
+                 productPrices.put("치즈버거 세트", 6000);
+                 productPrices.put("어니언버거 세트", 6500);
+                 productPrices.put("한우불고기버거 세트", 9000);
+                 productPrices.put("치킨버거 세트", 7000);
+                 productPrices.put("핫크리스피버거 세트", 7500);
+                 productPrices.put("베이컨버거 세트", 8000);
+                 productPrices.put("모짜렐라베이컨버거 세트", 8500);
+             } else if (category.equals("음료")) {
+                 productPrices.put("콜라", 2000);
+                 productPrices.put("제로콜라", 2000);
+                 productPrices.put("사이다", 2000);
+                 productPrices.put("생수", 1000);
+             } else if (category.equals("사이드")) {
+                 productPrices.put("감자튀김", 2000);
+                 productPrices.put("해시브라운", 1500);
+                 productPrices.put("어니언링", 1800);
+                 productPrices.put("쉬림프", 2500);
+             }
+
+             // 중앙 메뉴 패널 업데이트
+             CenterPanel.removeAll();
+
+             for (String productName : productPrices.keySet()) {
+                 JButton productButton = new JButton(productName + " - " + productPrices.get(productName) + "원");
+                 productButton.addActionListener(new ProductButtonListener());
+                 CenterPanel.add(productButton);
+             }
+
+             CenterPanel.revalidate();
+             CenterPanel.repaint();
+         }
+     }
+
+     private class ProductButtonListener implements ActionListener {
+         @Override
+         public void actionPerformed(ActionEvent e) {
+             String buttonText = ((JButton) e.getSource()).getText();
+             String productName = buttonText.split(" - ")[0];
+             Integer price = productPrices.get(productName);
+
+             if (price != null) {
+                 int flag = 0;
+                 for (int i = 0; i < model.getRowCount(); i++) {
+                     if (model.getValueAt(i, 0).equals(productName)) {
+                         int quantity = (int) model.getValueAt(i, 2) + 1;
+                         model.setValueAt(quantity, i, 2);
+                         model.setValueAt(quantity * price, i, 3);
+                         flag = 1;
+                         break;
+                     }
+                 }
+                 if (flag == 0) {
+                     model.addRow(new Object[]{productName, price, 1, price, "조절"});
+                 }
+                 updateTotal();
+             }
+         }
+     }
+
+     private void updateTotal() {
+         total = 0;
+         for (int i = 0; i < model.getRowCount(); i++) {
+             total += (int) model.getValueAt(i, 3);
+         }
+         totalLabel.setText("총 금액: " + total + "원");
+     }
+
+     public static void main(String[] args) {
+         new Toast();
+     }
+
+     // ButtonRenderer and ButtonEditor classes for + and - buttons in JTable
+     class ButtonRenderer extends JPanel implements TableCellRenderer {
+         private JButton plusButton;
+         private JButton minusButton;
+
+         public ButtonRenderer() {
+             setLayout(new FlowLayout(FlowLayout.CENTER, 5, 0));
+             plusButton = new JButton("+");
+             minusButton = new JButton("-");
+             add(plusButton);
+             add(minusButton);
+         }
+
+         @Override
+         public Component getTableCellRendererComponent(JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+             return this;
+         }
+     }
+
+     class ButtonEditor extends DefaultCellEditor {
+         private JPanel panel;
+         private JButton plusButton;
+         private JButton minusButton;
+
+         public ButtonEditor(JCheckBox checkBox) {
+             super(checkBox);
+             panel = new JPanel();
+             panel.setLayout(new FlowLayout(FlowLayout.CENTER, 5, 0));
+             plusButton = new JButton("+");
+             minusButton = new JButton("-");
+
+             plusButton.addActionListener(e -> {
+                 int row = table.getSelectedRow();
+                 int quantity = (int) table.getValueAt(row, 2) + 1;
+                 int price = (int) table.getValueAt(row, 1);
+                 table.setValueAt(quantity, row, 2);
+                 table.setValueAt(quantity * price, row, 3);
+                 updateTotal();
+             });
+
+             minusButton.addActionListener(e -> {
+                 int row = table.getSelectedRow();
+                 int quantity = (int) table.getValueAt(row, 2) - 1;
+                 if (quantity < 1) return;
+                 int price = (int) table.getValueAt(row, 1);
+                 table.setValueAt(quantity, row, 2);
+                 table.setValueAt(quantity * price, row, 3);
+                 updateTotal();
+             });
+
+             panel.add(plusButton);
+             panel.add(minusButton);
+         }
+
+         @Override
+         public Component getTableCellEditorComponent(JTable table, Object value, boolean isSelected, int row, int column) {
+             return panel;
+         }
+
+         @Override
+         public Object getCellEditorValue() {
+             return null;
+         }
+     }
+     }
